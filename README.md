@@ -1,6 +1,6 @@
 # qret-cli-bundle
 
-This package downloads a platform-specific `qret` CLI archive from GitHub Releases and prepends its directory to `PATH` when imported.
+This package downloads a platform-specific `qret` CLI binary from GitHub Releases and prepends its directory to `PATH` when imported.
 
 ```python
 import qret_cli_bundle

@@ -15,16 +15,20 @@ jobs:
         include:
           - os: macos-15-intel
             asset_suffix: macos-15-intel
-            archive_ext: tar.gz
+            release_name: qret-macos-15-intel
+            vcpkg_triplet: x64-osx-static
           - os: macos-latest
             asset_suffix: macos-latest
-            archive_ext: tar.gz
+            release_name: qret-macos-latest
+            vcpkg_triplet: arm64-osx-static
           - os: ubuntu-latest
             asset_suffix: ubuntu-latest
-            archive_ext: tar.gz
+            release_name: qret-ubuntu-latest
+            vcpkg_triplet: x64-linux-static
           - os: windows-latest
             asset_suffix: windows-latest
-            archive_ext: zip
+            release_name: qret-windows-latest.exe
+            vcpkg_triplet: x64-windows-static
 
     steps:
       - name: Checkout
@@ -85,40 +89,64 @@ jobs:
         run: |
           cmake -S quration -B build \
             -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake"
+            -DCMAKE_TOOLCHAIN_FILE="${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake" \
+            -DVCPKG_TARGET_TRIPLET="${{ matrix.vcpkg_triplet }}" \
+            -DVCPKG_OVERLAY_TRIPLETS="${{ github.workspace }}/.github/vcpkg-triplets" \
+            -DBUILD_SHARED_LIBS=OFF
 
       - name: Build qret
         run: cmake --build build --config Release --target qret
 
-      - name: Install to stage
-        run: cmake --install build --config Release --prefix stage
-
-      - name: Package artifact (Unix)
+      - name: Verify static link (Unix)
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          mkdir -p dist package
-          root="qret-${{ matrix.asset_suffix }}"
-          mkdir -p "package/$root"
-          cp -R stage/. "package/$root/"
-          tar -C package -czf "dist/$root.${{ matrix.archive_ext }}" "$root"
+          set -eux
+          qret_bin="$(find build -type f -name qret | head -n 1)"
+          test -n "$qret_bin"
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            ldd "$qret_bin" > /tmp/qret-ldd.txt
+            ! grep -E "qret-core|yaml-cpp|boost_program_options" /tmp/qret-ldd.txt
+          else
+            otool -L "$qret_bin" > /tmp/qret-otool.txt
+            ! grep -E "qret-core|yaml-cpp|boost_program_options" /tmp/qret-otool.txt
+          fi
 
-      - name: Package artifact (Windows)
+      - name: Verify static link (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $qret = Get-ChildItem -Path build -Recurse -Filter qret.exe | Select-Object -First 1
+          if (-not $qret) { throw "qret.exe not found" }
+          $dump = & dumpbin /DEPENDENTS $qret.FullName
+          if ($dump -match "qret-core|yaml-cpp|boost_program_options") {
+            throw "Found unexpected shared dependency in qret.exe"
+          }
+
+      - name: Collect qret binary (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -eux
+          mkdir -p dist
+          qret_bin="$(find build -type f -name qret | head -n 1)"
+          test -n "$qret_bin"
+          cp "$qret_bin" "dist/${{ matrix.release_name }}"
+
+      - name: Collect qret binary (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          New-Item -ItemType Directory -Force -Path package | Out-Null
-          $root = "qret-${{ matrix.asset_suffix }}"
-          New-Item -ItemType Directory -Force -Path "package/$root" | Out-Null
-          Copy-Item -Recurse -Force stage\* "package/$root/"
-          Compress-Archive -Path "package/$root" -DestinationPath "dist/$root.${{ matrix.archive_ext }}" -Force
+          $qret = Get-ChildItem -Path build -Recurse -Filter qret.exe | Select-Object -First 1
+          if (-not $qret) { throw "qret.exe not found" }
+          Copy-Item -Force $qret.FullName "dist/${{ matrix.release_name }}"
 
       - name: Upload qret artifact
         uses: actions/upload-artifact@v4
         with:
           name: qret-${{ matrix.asset_suffix }}
-          path: dist/qret-${{ matrix.asset_suffix }}.${{ matrix.archive_ext }}
+          path: dist/${{ matrix.release_name }}
 
   release:
     if: github.event_name == 'release'

@@ -7,10 +7,8 @@ import os
 import platform
 import shutil
 import stat
-import tarfile
 import tempfile
 import urllib.request
-import zipfile
 from pathlib import Path
 
 API_BASE = "https://api.github.com"
@@ -27,12 +25,12 @@ def _platform_asset_name() -> str:
 
     if system == "Darwin":
         if machine in {"x86_64", "amd64"}:
-            return "qret-macos-15-intel.tar.gz"
-        return "qret-macos-latest.tar.gz"
+            return "qret-macos-15-intel"
+        return "qret-macos-latest"
     if system == "Linux":
-        return "qret-ubuntu-latest.tar.gz"
+        return "qret-ubuntu-latest"
     if system == "Windows":
-        return "qret-windows-latest.zip"
+        return "qret-windows-latest.exe"
 
     raise QretBundleError(f"Unsupported platform: {system} ({machine})")
 
@@ -52,20 +50,6 @@ def _download_file(url: str, path: Path) -> None:
     req = urllib.request.Request(url, headers={"Accept": "application/octet-stream"})
     with urllib.request.urlopen(req, timeout=300) as response:
         path.write_bytes(response.read())
-
-
-def _extract_archive(archive_path: Path, out_dir: Path) -> None:
-    if archive_path.suffix == ".zip":
-        with zipfile.ZipFile(archive_path) as zf:
-            zf.extractall(out_dir)
-        return
-
-    if archive_path.name.endswith(".tar.gz"):
-        with tarfile.open(archive_path, mode="r:gz") as tf:
-            tf.extractall(out_dir)
-        return
-
-    raise QretBundleError(f"Unsupported archive format: {archive_path.name}")
 
 
 def _find_qret_binary(root: Path) -> Path:
@@ -105,12 +89,12 @@ def ensure_qret_on_path() -> Path:
             shutil.rmtree(install_root)
         install_root.mkdir(parents=True, exist_ok=True)
 
-        archive_path = install_root / asset_name
-        _download_file(assets[asset_name], archive_path)
-        _extract_archive(archive_path, install_root)
-        archive_path.unlink(missing_ok=True)
-
-        qret = _find_qret_binary(install_root)
+        target_name = "qret.exe" if platform.system() == "Windows" else "qret"
+        qret = install_root / target_name
+        _download_file(assets[asset_name], qret)
+        if platform.system() != "Windows":
+            mode = qret.stat().st_mode
+            qret.chmod(mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
         marker.write_text("ok", encoding="utf-8")
 
     bin_dir = str(qret.parent)
