@@ -2,7 +2,13 @@ name: qret-ci
 
 on:
   push:
+    paths:
+      - .github/workflows/release.yml
+      - quration
   pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - quration
   release:
     types: [published]
 

@@ -79,6 +79,11 @@ def _find_qret_binary(root: Path) -> Path:
     raise QretBundleError(f"Could not find {exe_name} under {root}")
 
 
+def _append_env_path(var_name: str, entry: str) -> None:
+    current = os.environ.get(var_name, "")
+    os.environ[var_name] = current + os.pathsep + entry if current else entry
+
+
 def ensure_qret_on_path() -> Path:
     """Ensure qret is downloaded and available in PATH, returning its full path."""
     repo = os.environ.get("QRET_BUNDLE_REPOSITORY", DEFAULT_REPO)
@@ -113,11 +118,12 @@ def ensure_qret_on_path() -> Path:
         qret = _find_qret_binary(install_root)
         marker.write_text("ok", encoding="utf-8")
 
-    bin_dir = str(qret.parent)
-    current_path = os.environ.get("PATH", "")
-    parts = current_path.split(os.pathsep) if current_path else []
-    if bin_dir not in parts:
-        os.environ["PATH"] = bin_dir + (os.pathsep + current_path if current_path else "")
+    bin_dir = qret.parent
+    lib_dir = qret.parent.parent / "lib"
+    if bin_dir.exists():
+        _append_env_path("PATH", str(bin_dir))
+    if platform.system() == "Linux" and lib_dir.exists():
+        _append_env_path("LD_LIBRARY_PATH", str(lib_dir))
     os.environ["QRET_PATH"] = str(qret)
     return qret
 
