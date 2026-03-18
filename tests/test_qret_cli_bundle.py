@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import importlib.util
 import subprocess
 import shutil
+from pathlib import Path
 
 
 def test_import_and_qret_version() -> None:

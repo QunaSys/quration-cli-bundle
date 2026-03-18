@@ -7,6 +7,7 @@ import os
 import platform
 import shutil
 import stat
+import subprocess
 import tarfile
 import tempfile
 import urllib.request
@@ -143,4 +144,35 @@ def ensure_qret_on_path() -> Path:
 
 ensure_qret_on_path()
 
-__all__ = ["QretBundleError", "ensure_qret_on_path"]
+
+def _run_streamlit(script_name: str, *streamlit_args: str) -> subprocess.CompletedProcess[bytes]:
+    streamlit_cmd = shutil.which("streamlit")
+    if streamlit_cmd is None:
+        msg = "streamlit command was not found in PATH. Please install streamlit."
+        raise QretBundleError(msg)
+
+    script_path = Path(__file__).resolve().parent / "visualizer" / script_name
+    if not script_path.is_file():
+        msg = f"Bundled visualizer script not found: {script_path}"
+        raise QretBundleError(msg)
+
+    cmd = [streamlit_cmd, "run", str(script_path), *streamlit_args]
+    return subprocess.run(cmd, check=False)
+
+
+def visualize_compile_info(*streamlit_args: str) -> subprocess.CompletedProcess[bytes]:
+    """Run streamlit visualizer for compile information."""
+    return _run_streamlit("visualize_compile_info.py", *streamlit_args)
+
+
+def visualize_computational_process(*streamlit_args: str) -> subprocess.CompletedProcess[bytes]:
+    """Run streamlit visualizer for computational process."""
+    return _run_streamlit("visualize_computational_process.py", *streamlit_args)
+
+
+__all__ = [
+    "QretBundleError",
+    "ensure_qret_on_path",
+    "visualize_compile_info",
+    "visualize_computational_process",
+]
