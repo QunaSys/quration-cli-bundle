@@ -153,12 +153,12 @@ jobs:
       - name: Install to stage
         run: cmake --install build --config Release --prefix stage
 
-      - name: Prepare release stub contents
+      - name: Package artifact
         shell: bash
         run: |
-          mkdir -p dist
+          mkdir -p dist package
           root="qret-${{ matrix.asset_suffix }}"
-          package_root="dist/$root"
+          package_root="package/$root"
           mkdir -p "$package_root"
           cp -R stage/. "$package_root/"
           rm -rf "$package_root/include"
@@ -184,40 +184,20 @@ jobs:
             -exec cp {} "$package_root/licenses/qret/" \;
           find "$PWD/.newsynth/license" -mindepth 1 -maxdepth 1 -type f -exec cp {} "$package_root/licenses/newsynth/" \;
 
-          python - <<'PY'
-          import os
-          import tarfile
-          import zipfile
-          from pathlib import Path
-
-          dist = Path("dist")
-          root = dist / os.environ["ROOT_NAME"]
-          archive_path = dist / os.environ["ARCHIVE_NAME"]
-
-          if archive_path.suffix == ".zip":
-              with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as zf:
-                  for path in root.rglob("*"):
-                      if path.is_file():
-                          zf.write(path, path.relative_to(dist).as_posix())
-          else:
-              with tarfile.open(archive_path, "w:gz") as tf:
-                  tf.add(root, arcname=root.name)
-          PY
-        env:
-          ROOT_NAME: qret-${{ matrix.asset_suffix }}
-          ARCHIVE_NAME: qret-${{ matrix.asset_suffix }}.${{ matrix.archive_ext }}
-
-      - name: Place archive inside artifact directory
-        shell: bash
-        run: |
-          root="qret-${{ matrix.asset_suffix }}"
-          mv "dist/$root.${{ matrix.archive_ext }}" "dist/$root/"
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            (
+              cd package
+              tar -a -cf "../dist/$root.${{ matrix.archive_ext }}" "$root"
+            )
+          else
+            tar -C package -czf "dist/$root.${{ matrix.archive_ext }}" "$root"
+          fi
 
       - name: Upload qret artifact
         uses: actions/upload-artifact@v4
         with:
           name: qret-${{ matrix.asset_suffix }}
-          path: dist/qret-${{ matrix.asset_suffix }}
+          path: dist/qret-${{ matrix.asset_suffix }}.${{ matrix.archive_ext }}
 
   release:
     if: github.event_name == 'release'
