@@ -76,19 +76,55 @@ def _find_qret_binary(root: Path) -> Path:
     raise QretBundleError(f"Could not find {exe_name} under {root}")
 
 
+def _gridsynth_names() -> tuple[str, ...]:
+    if platform.system() == "Windows":
+        return ("gridsynth.exe", "gridsynth.cmd", "newsynth.exe", "newsynth.cmd")
+    return ("gridsynth", "newsynth")
+
+
+def _find_gridsynth_binary(root: Path) -> Path | None:
+    for exe_name in _gridsynth_names():
+        for path in root.rglob(exe_name):
+            if path.is_file():
+                if platform.system() != "Windows":
+                    mode = path.stat().st_mode
+                    path.chmod(mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+                return path
+    return None
+
+
 def _append_env_path(var_name: str, entry: str) -> None:
     current = os.environ.get(var_name, "")
     os.environ[var_name] = current + os.pathsep + entry if current else entry
 
 
 def _find_existing_qret_in_path() -> Path | None:
-    exe_name = "qret.exe" if platform.system() == "Windows" else "qret"
-    qret_path = shutil.which(exe_name)
-    if qret_path:
-        candidate = Path(qret_path).resolve()
-        if candidate.is_file():
-            return candidate
+    exe_names = ("qret.exe", "qret.cmd") if platform.system() == "Windows" else ("qret",)
+    for exe_name in exe_names:
+        qret_path = shutil.which(exe_name)
+        if qret_path:
+            candidate = Path(qret_path).resolve()
+            if candidate.is_file():
+                return candidate
     return None
+
+
+def _find_existing_gridsynth_in_path() -> Path | None:
+    for exe_name in _gridsynth_names():
+        gridsynth_path = shutil.which(exe_name)
+        if gridsynth_path:
+            candidate = Path(gridsynth_path).resolve()
+            if candidate.is_file():
+                return candidate
+    return None
+
+
+def _set_gridsynth_path(bin_dir: Path) -> None:
+    gridsynth = _find_gridsynth_binary(bin_dir)
+    if gridsynth is None:
+        gridsynth = _find_existing_gridsynth_in_path()
+    if gridsynth is not None:
+        os.environ["GRIDSYNTH_PATH"] = str(gridsynth)
 
 
 def ensure_qret_on_path() -> Path:
@@ -100,6 +136,7 @@ def ensure_qret_on_path() -> Path:
         lib_dir = qret.parent.parent / "lib"
         if bin_dir.exists():
             _append_env_path("PATH", str(bin_dir))
+            _set_gridsynth_path(bin_dir)
         if platform.system() == "Linux" and lib_dir.exists():
             _append_env_path("LD_LIBRARY_PATH", str(lib_dir))
         return qret
@@ -137,6 +174,7 @@ def ensure_qret_on_path() -> Path:
     lib_dir = qret.parent.parent / "lib"
     if bin_dir.exists():
         _append_env_path("PATH", str(bin_dir))
+        _set_gridsynth_path(bin_dir)
     if platform.system() == "Linux" and lib_dir.exists():
         _append_env_path("LD_LIBRARY_PATH", str(lib_dir))
     return qret
