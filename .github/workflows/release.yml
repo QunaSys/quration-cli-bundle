@@ -22,12 +22,16 @@ jobs:
         include:
           - os: macos-15-intel
             asset_suffix: macos-15-intel
+            archive_ext: tar.gz
           - os: macos-latest
             asset_suffix: macos-latest
+            archive_ext: tar.gz
           - os: ubuntu-latest
             asset_suffix: ubuntu-latest
+            archive_ext: tar.gz
           - os: windows-latest
             asset_suffix: windows-latest
+            archive_ext: zip
 
     steps:
       - name: Checkout
@@ -179,6 +183,35 @@ jobs:
             \( -iname "LICENSE*" -o -iname "COPYING*" -o -iname "README*" -o -iname "NOTICE*" \) \
             -exec cp {} "$package_root/licenses/qret/" \;
           find "$PWD/.newsynth/license" -mindepth 1 -maxdepth 1 -type f -exec cp {} "$package_root/licenses/newsynth/" \;
+
+          python - <<'PY'
+          import os
+          import tarfile
+          import zipfile
+          from pathlib import Path
+
+          dist = Path("dist")
+          root = dist / os.environ["ROOT_NAME"]
+          archive_path = dist / os.environ["ARCHIVE_NAME"]
+
+          if archive_path.suffix == ".zip":
+              with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                  for path in root.rglob("*"):
+                      if path.is_file():
+                          zf.write(path, path.relative_to(dist).as_posix())
+          else:
+              with tarfile.open(archive_path, "w:gz") as tf:
+                  tf.add(root, arcname=root.name)
+          PY
+        env:
+          ROOT_NAME: qret-${{ matrix.asset_suffix }}
+          ARCHIVE_NAME: qret-${{ matrix.asset_suffix }}.${{ matrix.archive_ext }}
+
+      - name: Place archive inside artifact directory
+        shell: bash
+        run: |
+          root="qret-${{ matrix.asset_suffix }}"
+          mv "dist/$root.${{ matrix.archive_ext }}" "dist/$root/"
 
       - name: Upload qret artifact
         uses: actions/upload-artifact@v4
