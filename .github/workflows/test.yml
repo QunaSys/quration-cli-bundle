@@ -2,6 +2,7 @@ name: test
 
 on:
   push:
+    branches: [main]
     paths:
       - src/**
       - tests/**
@@ -47,7 +48,12 @@ jobs:
           #!/usr/bin/env sh
           echo "qret 0.0.0-ci"
           EOF
+          cat > .ci-bin/gridsynth <<'EOF'
+          #!/usr/bin/env sh
+          echo "gridsynth 0.0.0-ci"
+          EOF
           chmod +x .ci-bin/qret
+          chmod +x .ci-bin/gridsynth
           echo "$GITHUB_WORKSPACE/.ci-bin" >> "$GITHUB_PATH"
 
       - name: Prepare qret stub for test (Windows)
@@ -59,6 +65,10 @@ jobs:
           @echo off
           echo qret 0.0.0-ci
           '@ | Set-Content -Path .ci-bin/qret.cmd
+          @'
+          @echo off
+          echo gridsynth 0.0.0-ci
+          '@ | Set-Content -Path .ci-bin/gridsynth.cmd
           "$env:GITHUB_WORKSPACE/.ci-bin" | Out-File -FilePath $env:GITHUB_PATH -Append
 
       - name: Run pytest

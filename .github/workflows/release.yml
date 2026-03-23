@@ -2,6 +2,7 @@ name: qret-ci
 
 on:
   push:
+    branches: [main]
     paths:
       - .github/workflows/release.yml
       - quration
@@ -21,22 +22,71 @@ jobs:
         include:
           - os: macos-15-intel
             asset_suffix: macos-15-intel
-            archive_ext: tar.gz
           - os: macos-latest
             asset_suffix: macos-latest
-            archive_ext: tar.gz
           - os: ubuntu-latest
             asset_suffix: ubuntu-latest
-            archive_ext: tar.gz
           - os: windows-latest
             asset_suffix: windows-latest
-            archive_ext: zip
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: Restore newsynth cache
+        id: newsynth-cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .newsynth/bin
+            .newsynth/license
+          key: newsynth-${{ matrix.os }}-v1
+
+      - name: Setup Haskell (GHC/Cabal)
+        if: steps.newsynth-cache.outputs.cache-hit != 'true'
+        uses: haskell-actions/setup@v2
+        with:
+          ghc-version: "9.6.6"
+          cabal-version: "3.12.1.0"
+
+      - name: Build newsynth binaries from Hackage
+        if: steps.newsynth-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          mkdir -p "$PWD/.newsynth/bin"
+          cabal update
+          cabal install newsynth --installdir "$PWD/.newsynth/bin" --install-method=copy --overwrite-policy=always
+          if [ "$RUNNER_OS" != "Windows" ]; then
+            chmod +x "$PWD/.newsynth/bin/gridsynth"
+          fi
+          ls -la "$PWD/.newsynth/bin"
+
+      - name: Download newsynth LICENSE files
+        if: steps.newsynth-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          rm -rf "$PWD/.newsynth/src"
+          rm -rf "$PWD/.newsynth/license"
+          mkdir -p "$PWD/.newsynth/src"
+          mkdir -p "$PWD/.newsynth/license"
+          cabal get newsynth --destdir "$PWD/.newsynth/src" --pristine
+          newsynth_src_dir=$(find "$PWD/.newsynth/src" -maxdepth 1 -type d -name "newsynth-*" | head -n 1)
+          if [ -n "$newsynth_src_dir" ]; then
+            find "$newsynth_src_dir" -maxdepth 2 -type f \
+              \( -iname "LICENSE*" -o -iname "COPYING*" -o -iname "README*" -o -iname "GPL*" \) \
+              -exec cp {} "$PWD/.newsynth/license/" \;
+          fi
+          ls -la "$PWD/.newsynth/license"
+
+      - name: Fix newsynth permissions (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          if [ -d "$PWD/.newsynth/bin" ]; then
+            chmod +x "$PWD"/.newsynth/bin/* || true
+          fi
 
       - name: Setup MSVC (Windows)
         if: runner.os == 'Windows'
@@ -99,32 +149,42 @@ jobs:
       - name: Install to stage
         run: cmake --install build --config Release --prefix stage
 
-      - name: Package artifact (Unix)
-        if: runner.os != 'Windows'
+      - name: Prepare release stub contents
         shell: bash
         run: |
-          mkdir -p dist package
+          mkdir -p dist
           root="qret-${{ matrix.asset_suffix }}"
-          mkdir -p "package/$root"
-          cp -R stage/. "package/$root/"
-          tar -C package -czf "dist/$root.${{ matrix.archive_ext }}" "$root"
+          package_root="dist/$root"
+          mkdir -p "$package_root"
+          cp -R stage/. "$package_root/"
+          rm -rf "$package_root/include"
+          rm -rf "$package_root/lib/cmake"
 
-      - name: Package artifact (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path dist | Out-Null
-          New-Item -ItemType Directory -Force -Path package | Out-Null
-          $root = "qret-${{ matrix.asset_suffix }}"
-          New-Item -ItemType Directory -Force -Path "package/$root" | Out-Null
-          Copy-Item -Recurse -Force stage\* "package/$root/"
-          Compress-Archive -Path "package/$root" -DestinationPath "dist/$root.${{ matrix.archive_ext }}" -Force
+          mkdir -p "$package_root/bin"
+          mkdir -p "$package_root/licenses/qret"
+          mkdir -p "$package_root/licenses/newsynth"
+
+          for file in "$PWD"/.newsynth/bin/*; do
+            [ -f "$file" ] || continue
+            base_name="$(basename "$file")"
+            case "$base_name" in
+              README*|readme*)
+                continue
+                ;;
+            esac
+            cp "$file" "$package_root/bin/"
+          done
+
+          find "$PWD/quration" -maxdepth 2 -type f \
+            \( -iname "LICENSE*" -o -iname "COPYING*" -o -iname "README*" -o -iname "NOTICE*" \) \
+            -exec cp {} "$package_root/licenses/qret/" \;
+          find "$PWD/.newsynth/license" -mindepth 1 -maxdepth 1 -type f -exec cp {} "$package_root/licenses/newsynth/" \;
 
       - name: Upload qret artifact
         uses: actions/upload-artifact@v4
         with:
           name: qret-${{ matrix.asset_suffix }}
-          path: dist/qret-${{ matrix.asset_suffix }}.${{ matrix.archive_ext }}
+          path: dist/qret-${{ matrix.asset_suffix }}
 
   release:
     if: github.event_name == 'release'
@@ -143,4 +203,4 @@ jobs:
       - name: Upload artifacts to release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/*
+          files: dist/**/*

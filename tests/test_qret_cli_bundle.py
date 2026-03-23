@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import os
 import subprocess
 import shutil
 from pathlib import Path
@@ -20,3 +21,6 @@ def test_import_and_qret_version() -> None:
     )
     assert result.returncode == 0, result.stderr
     assert result.stdout.strip() or result.stderr.strip()
+
+    gridsynth_path = os.environ.get("GRIDSYNTH_PATH")
+    assert gridsynth_path is not None
