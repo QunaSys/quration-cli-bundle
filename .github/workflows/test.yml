@@ -4,13 +4,13 @@ on:
   push:
     branches: [main]
     paths:
-      - src/**
+      - "qret_cli_bundle/**"
       - tests/**
       - pyproject.toml
       - .github/workflows/test.yml
   pull_request:
     paths:
-      - src/**
+      - "qret_cli_bundle/**"
       - tests/**
       - pyproject.toml
       - .github/workflows/test.yml
