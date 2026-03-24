@@ -185,10 +185,7 @@ jobs:
           find "$PWD/.newsynth/license" -mindepth 1 -maxdepth 1 -type f -exec cp {} "$package_root/licenses/newsynth/" \;
 
           if [ "${{ runner.os }}" = "Windows" ]; then
-            (
-              cd package
-              tar -a -cf "../dist/$root.${{ matrix.archive_ext }}" "$root"
-            )
+            python -c 'import shutil; from pathlib import Path; root = Path("package") / "qret-${{ matrix.asset_suffix }}"; out_base = Path("dist") / "qret-${{ matrix.asset_suffix }}"; shutil.make_archive(str(out_base), "zip", root_dir=root.parent, base_dir=root.name)'
           else
             tar -C package -czf "dist/$root.${{ matrix.archive_ext }}" "$root"
           fi
