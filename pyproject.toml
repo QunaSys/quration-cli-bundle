@@ -21,7 +21,10 @@ dependencies = [
 test = ["pytest>=8.0"]
 
 [tool.setuptools]
-package-dir = { "qret_cli_bundle" = "." }
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["qret_cli_bundle*"]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"

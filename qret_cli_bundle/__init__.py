@@ -52,45 +52,37 @@ def _download_file(url: str, path: Path) -> None:
 
 
 def _extract_archive(archive_path: Path, out_dir: Path) -> None:
-    if archive_path.suffix == ".zip":
-        with zipfile.ZipFile(archive_path) as zf:
-            zf.extractall(out_dir)
-        return
+    with tempfile.TemporaryDirectory(prefix="qret-extract-") as tmp_dir:
+        extract_tmp = Path(tmp_dir)
 
-    if archive_path.name.endswith(".tar.gz"):
-        with tarfile.open(archive_path, mode="r:gz") as tf:
-            tf.extractall(out_dir)
-        return
+        if archive_path.suffix == ".zip":
+            with zipfile.ZipFile(archive_path) as zf:
+                zf.extractall(extract_tmp)
+        elif archive_path.name.endswith(".tar.gz"):
+            with tarfile.open(archive_path, mode="r:gz") as tf:
+                tf.extractall(extract_tmp)
+        else:
+            raise QretBundleError(f"Unsupported archive format: {archive_path.name}")
 
-    raise QretBundleError(f"Unsupported archive format: {archive_path.name}")
+        payload_root = extract_tmp
+        while True:
+            entries = [p for p in payload_root.iterdir()]
+            dirs = [p for p in entries if p.is_dir()]
+            files = [p for p in entries if p.is_file()]
+            # Collapse redundant wrapper directories (e.g., qret-*/qret-*/...).
+            if len(dirs) == 1 and len(files) == 0:
+                payload_root = dirs[0]
+                continue
+            break
 
-
-def _find_qret_binary(root: Path) -> Path:
-    exe_name = "qret.exe" if platform.system() == "Windows" else "qret"
-    for path in root.rglob(exe_name):
-        if path.is_file():
-            if platform.system() != "Windows":
-                mode = path.stat().st_mode
-                path.chmod(mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-            return path
-    raise QretBundleError(f"Could not find {exe_name} under {root}")
-
-
-def _gridsynth_names() -> tuple[str, ...]:
-    if platform.system() == "Windows":
-        return ("gridsynth.exe", "gridsynth.cmd", "newsynth.exe", "newsynth.cmd")
-    return ("gridsynth", "newsynth")
-
-
-def _find_gridsynth_binary(root: Path) -> Path | None:
-    for exe_name in _gridsynth_names():
-        for path in root.rglob(exe_name):
-            if path.is_file():
-                if platform.system() != "Windows":
-                    mode = path.stat().st_mode
-                    path.chmod(mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
-                return path
-    return None
+        for path in payload_root.iterdir():
+            target = out_dir / path.name
+            if target.exists():
+                if target.is_dir():
+                    shutil.rmtree(target)
+                else:
+                    target.unlink()
+            shutil.move(str(path), str(target))
 
 
 def _append_env_path(var_name: str, entry: str) -> None:
@@ -98,58 +90,17 @@ def _append_env_path(var_name: str, entry: str) -> None:
     os.environ[var_name] = current + os.pathsep + entry if current else entry
 
 
-def _find_existing_qret_in_path() -> Path | None:
-    exe_names = ("qret.exe", "qret.cmd") if platform.system() == "Windows" else ("qret",)
-    for exe_name in exe_names:
-        qret_path = shutil.which(exe_name)
-        if qret_path:
-            candidate = Path(qret_path).resolve()
-            if candidate.is_file():
-                return candidate
-    return None
+def ensure_qret_on_path() -> None:
 
-
-def _find_existing_gridsynth_in_path() -> Path | None:
-    for exe_name in _gridsynth_names():
-        gridsynth_path = shutil.which(exe_name)
-        if gridsynth_path:
-            candidate = Path(gridsynth_path).resolve()
-            if candidate.is_file():
-                return candidate
-    return None
-
-
-def _set_gridsynth_path(bin_dir: Path) -> None:
-    gridsynth = _find_gridsynth_binary(bin_dir)
-    if gridsynth is None:
-        gridsynth = _find_existing_gridsynth_in_path()
-    if gridsynth is not None:
-        os.environ["GRIDSYNTH_PATH"] = str(gridsynth)
-
-
-def ensure_qret_on_path() -> Path:
-    """Ensure qret is downloaded and available in PATH, returning its full path."""
-    existing_qret = _find_existing_qret_in_path()
-    if existing_qret:
-        qret = existing_qret
-        bin_dir = qret.parent
-        lib_dir = qret.parent.parent / "lib"
-        if bin_dir.exists():
-            _append_env_path("PATH", str(bin_dir))
-            _set_gridsynth_path(bin_dir)
-        if platform.system() == "Linux" and lib_dir.exists():
-            _append_env_path("LD_LIBRARY_PATH", str(lib_dir))
-        return qret
-
-    asset_name = _platform_asset_name()
-
-    temp_root = Path(tempfile.gettempdir()) / "qret-cli-bundle"
-    install_root = temp_root / DEFAULT_REPO.replace("/", "__") / "latest" / asset_name
-    marker = install_root / ".ready"
-
-    if marker.exists():
-        qret = _find_qret_binary(install_root)
-    else:
+    install_root = Path(__file__).parent / "bundle"
+    bin_dir = install_root / "bin"
+    lib_dir = install_root / "lib"
+    _append_env_path("PATH", str(bin_dir))
+    if platform.system() == "Linux":
+        _append_env_path("LD_LIBRARY_PATH", str(lib_dir))
+    
+    if not (bin_dir / "qret").exists() or not (bin_dir / "gridsynth").exists():
+        asset_name = _platform_asset_name()
         release = _release_json()
         assets = {asset["name"]: asset["browser_download_url"] for asset in release.get("assets", [])}
         if asset_name not in assets:
@@ -167,17 +118,8 @@ def ensure_qret_on_path() -> Path:
         _extract_archive(archive_path, install_root)
         archive_path.unlink(missing_ok=True)
 
-        qret = _find_qret_binary(install_root)
-        marker.write_text("ok", encoding="utf-8")
-
-    bin_dir = qret.parent
-    lib_dir = qret.parent.parent / "lib"
-    if bin_dir.exists():
-        _append_env_path("PATH", str(bin_dir))
-        _set_gridsynth_path(bin_dir)
-    if platform.system() == "Linux" and lib_dir.exists():
-        _append_env_path("LD_LIBRARY_PATH", str(lib_dir))
-    return qret
+    if (bin_dir / "gridsynth").exists():
+        os.environ["GRIDSYNTH_PATH"] = str(bin_dir / "gridsynth")
 
 
 ensure_qret_on_path()

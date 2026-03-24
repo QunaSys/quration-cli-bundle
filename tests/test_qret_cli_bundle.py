@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import importlib.util
 import os
 import subprocess
 import shutil
-from pathlib import Path
-
 
 def test_import_and_qret_version() -> None:
     import qret_cli_bundle  # noqa: F401

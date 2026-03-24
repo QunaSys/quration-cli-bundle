@@ -1,3 +1,4 @@
 __pycache__/
 /build/
 /dist/
+/qret_cli_bundle/bundle/
