@@ -90,6 +90,17 @@ def _append_env_path(var_name: str, entry: str) -> None:
     os.environ[var_name] = current + os.pathsep + entry if current else entry
 
 
+def _resolve_bundled_executable(bin_dir: Path, name: str) -> Path | None:
+    if platform.system() == "Windows":
+        for ext in ("", ".exe", ".cmd", ".bat"):
+            candidate = bin_dir / f"{name}{ext}"
+            if candidate.exists():
+                return candidate
+        return None
+    candidate = bin_dir / name
+    return candidate if candidate.exists() else None
+
+
 def ensure_qret_on_path() -> None:
 
     install_root = Path(__file__).parent / "bundle"
@@ -101,7 +112,10 @@ def ensure_qret_on_path() -> None:
     elif platform.system() == "Darwin":
         _append_env_path("DYLD_LIBRARY_PATH", str(lib_dir))
     
-    if not (bin_dir / "qret").exists() or not (bin_dir / "gridsynth").exists():
+    qret_bin = _resolve_bundled_executable(bin_dir, "qret")
+    gridsynth_bin = _resolve_bundled_executable(bin_dir, "gridsynth")
+
+    if qret_bin is None or gridsynth_bin is None:
         asset_name = _platform_asset_name()
         release = _release_json()
         assets = {asset["name"]: asset["browser_download_url"] for asset in release.get("assets", [])}
@@ -120,8 +134,9 @@ def ensure_qret_on_path() -> None:
         _extract_archive(archive_path, install_root)
         archive_path.unlink(missing_ok=True)
 
-    if (bin_dir / "gridsynth").exists():
-        os.environ["GRIDSYNTH_PATH"] = str(bin_dir / "gridsynth")
+    gridsynth_bin = _resolve_bundled_executable(bin_dir, "gridsynth")
+    if gridsynth_bin is not None:
+        os.environ["GRIDSYNTH_PATH"] = str(gridsynth_bin)
 
 
 ensure_qret_on_path()

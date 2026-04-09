@@ -271,7 +271,7 @@ jobs:
 
   release:
     if: github.event_name == 'release'
-    needs: ['test-qret']
+    needs: [build-qret]
     runs-on: ubuntu-latest
     permissions:
       contents: write
