@@ -14,6 +14,7 @@ on:
     types: [published]
 
 jobs:
+
   build-qret:
     runs-on: ${{ matrix.os }}
     strategy:
@@ -107,6 +108,7 @@ jobs:
 
       - name: Install libyaml-cpp (Linux)
         if: runner.os == 'Linux'
+        shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential gcc g++ libyaml-cpp0.8 libyaml-cpp-dev
@@ -148,9 +150,11 @@ jobs:
             -DCMAKE_TOOLCHAIN_FILE="${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake"
 
       - name: Build qret
+        shell: bash
         run: cmake --build build --config Release --target qret
 
       - name: Install to stage
+        shell: bash
         run: cmake --install build --config Release --prefix stage
 
       - name: Package artifact
@@ -196,9 +200,78 @@ jobs:
           name: qret-${{ matrix.asset_suffix }}
           path: dist/qret-${{ matrix.asset_suffix }}.${{ matrix.archive_ext }}
 
+  build-wheel:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - macos-15-intel
+          - ubuntu-latest
+          - windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build wheel
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build
+          python -m build --wheel
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qret-cli-bundle-wheel-${{ matrix.os }}
+          path: dist/*.whl
+
+  test-qret:
+    runs-on: ${{ matrix.os }}
+    needs: [build-wheel]
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - macos-latest
+          - macos-15-intel
+          - ubuntu-latest
+          - windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Download wheel artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: qret-cli-bundle-wheel-${{ matrix.os }}
+          path: dist
+
+      - name: Install test deps and wheel artifact
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest
+          python -m pip install dist/*.whl
+
+      - name: Run pytest
+        shell: bash
+        run: pytest -q tests/test_qret_cli_bundle.py
+
   release:
     if: github.event_name == 'release'
-    needs: [build-qret]
+    needs: ['test-qret']
     runs-on: ubuntu-latest
     permissions:
       contents: write
