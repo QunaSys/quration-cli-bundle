@@ -38,15 +38,25 @@ def _platform_asset_name() -> str:
     raise QretBundleError(f"Unsupported platform: {system} ({machine})")
 
 
+def _github_headers(accept: str) -> dict[str, str]:
+    headers = {"Accept": accept}
+    # Use a token in CI to avoid GitHub API rate limits; local environments can
+    # continue to fall back to unauthenticated requests when no token is set.
+    github_token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if github_token:
+        headers["Authorization"] = f"Bearer {github_token}"
+    return headers
+
+
 def _release_json() -> dict:
     url = f"{API_BASE}/repos/{DEFAULT_REPO}/releases/latest"
-    req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json"})
+    req = urllib.request.Request(url, headers=_github_headers("application/vnd.github+json"))
     with urllib.request.urlopen(req, timeout=60) as response:
         return json.load(response)
 
 
 def _download_file(url: str, path: Path) -> None:
-    req = urllib.request.Request(url, headers={"Accept": "application/octet-stream"})
+    req = urllib.request.Request(url, headers=_github_headers("application/octet-stream"))
     with urllib.request.urlopen(req, timeout=300) as response:
         path.write_bytes(response.read())
 
@@ -90,6 +100,14 @@ def _append_env_path(var_name: str, entry: str) -> None:
     os.environ[var_name] = current + os.pathsep + entry if current else entry
 
 
+def _find_executable(bin_dir: Path, *names: str) -> Path | None:
+    for name in names:
+        candidate = bin_dir / name
+        if candidate.exists():
+            return candidate
+    return None
+
+
 def ensure_qret_on_path() -> None:
 
     install_root = Path(__file__).parent / "bundle"
@@ -100,7 +118,6 @@ def ensure_qret_on_path() -> None:
         _append_env_path("LD_LIBRARY_PATH", str(lib_dir))
     elif platform.system() == "Darwin":
         _append_env_path("DYLD_FALLBACK_LIBRARY_PATH", str(lib_dir))
-    
     if not (bin_dir / "qret").exists() or not (bin_dir / "gridsynth").exists():
         asset_name = _platform_asset_name()
         release = _release_json()
@@ -120,8 +137,9 @@ def ensure_qret_on_path() -> None:
         _extract_archive(archive_path, install_root)
         archive_path.unlink(missing_ok=True)
 
-    if (bin_dir / "gridsynth").exists():
-        os.environ["GRIDSYNTH_PATH"] = str(bin_dir / "gridsynth")
+    gridsynth_path = _find_executable(bin_dir, "gridsynth", "gridsynth.exe", "gridsynth.cmd")
+    if gridsynth_path is not None:
+        os.environ["GRIDSYNTH_PATH"] = str(gridsynth_path)
 
 
 ensure_qret_on_path()

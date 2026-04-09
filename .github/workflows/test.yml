@@ -72,4 +72,6 @@ jobs:
           "$env:GITHUB_WORKSPACE/.ci-bin" | Out-File -FilePath $env:GITHUB_PATH -Append
 
       - name: Run pytest
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: pytest -q tests/test_qret_cli_bundle.py
