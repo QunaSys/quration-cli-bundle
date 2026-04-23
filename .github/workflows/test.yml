@@ -34,12 +34,12 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
-      ## leaving this for future debug purpose
-      # - name: Install package and test deps
-      #   run: |
-      #     python -m pip install --upgrade pip
-      #     python -m pip install -e ".[test]"
+      - name: Install package and test deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pytest
+      ## leaving this for future debug purpose    
+      #    python -m pip install -e ".[test]"
 
       # - name: Prepare qret stub for test (Unix)
       #   if: runner.os != 'Windows'
