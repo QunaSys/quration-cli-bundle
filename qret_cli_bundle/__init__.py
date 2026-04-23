@@ -118,7 +118,7 @@ def ensure_qret_on_path() -> None:
         _append_env_path("LD_LIBRARY_PATH", str(lib_dir))
     elif platform.system() == "Darwin":
         _append_env_path("DYLD_FALLBACK_LIBRARY_PATH", str(lib_dir))
-    if not (bin_dir / "qret").exists() or not (bin_dir / "gridsynth").exists():
+    if _find_executable(bin_dir, "qret", "qret.exe", "qret.cmd") is None or _find_executable(bin_dir, "gridsynth", "gridsynth.exe", "gridsynth.cmd") is None:
         asset_name = _platform_asset_name()
         release = _release_json()
         assets = {asset["name"]: asset["browser_download_url"] for asset in release.get("assets", [])}
