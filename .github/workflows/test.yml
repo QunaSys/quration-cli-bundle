@@ -56,20 +56,20 @@ jobs:
       #     chmod +x .ci-bin/gridsynth
       #     echo "$GITHUB_WORKSPACE/.ci-bin" >> "$GITHUB_PATH"
 
-      - name: Prepare qret stub for test (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path .ci-bin | Out-Null
-          @'
-          @echo off
-          echo qret 0.0.0-ci
-          '@ | Set-Content -Path .ci-bin/qret.cmd
-          @'
-          @echo off
-          echo gridsynth 0.0.0-ci
-          '@ | Set-Content -Path .ci-bin/gridsynth.cmd
-          "$env:GITHUB_WORKSPACE/.ci-bin" | Out-File -FilePath $env:GITHUB_PATH -Append
+      # - name: Prepare qret stub for test (Windows)
+      #   if: runner.os == 'Windows'
+      #   shell: pwsh
+      #   run: |
+      #     New-Item -ItemType Directory -Force -Path .ci-bin | Out-Null
+      #     @'
+      #     @echo off
+      #     echo qret 0.0.0-ci
+      #     '@ | Set-Content -Path .ci-bin/qret.cmd
+      #     @'
+      #     @echo off
+      #     echo gridsynth 0.0.0-ci
+      #     '@ | Set-Content -Path .ci-bin/gridsynth.cmd
+      #     "$env:GITHUB_WORKSPACE/.ci-bin" | Out-File -FilePath $env:GITHUB_PATH -Append
 
       - name: Run pytest
         env:
